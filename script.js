@@ -321,7 +321,6 @@ async function updateLoadingMessage(message) {
 checkButton.addEventListener('click', async function () {
     this.disabled = true;
     editButton.disabled = true; // Disable the Edit button
-    document.getElementById('editDoHButton').disabled = true; // Disable the DoH Edit button
     document.getElementById('loadingMessage').classList.remove('hidden');
     
     // Clear previous chart data
@@ -336,7 +335,6 @@ checkButton.addEventListener('click', async function () {
     document.getElementById('loadingMessage').classList.add('hidden');
     this.disabled = false;
     editButton.disabled = false; // Re-enable the Edit button
-    document.getElementById('editDoHButton').disabled = false; // Re-enable the DoH Edit button
 });
 
 async function performDNSTests() {
@@ -887,17 +885,17 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    const dohModal = document.getElementById("dohModal");
-    const dohBtn = document.getElementById("editDoHButton");
-    const closeDohBtn = dohModal.querySelector(".close");
     const addDoHBtn = document.getElementById("addDoH");
-    const newDoHInput = document.getElementById("newDoH");
-    const dohList = document.getElementById("dohList");
+    const newDoHNameInput = document.getElementById("newDoHName");
+    const newDoHUrlInput = document.getElementById("newDoHUrl");
+    const customDohList = document.getElementById("customDohList");
 
-    // Function to render the DoH servers list
-    function renderDoHList() {
-        dohList.innerHTML = '';
-        dnsServers.forEach((server, index) => {
+    // Function to render the Custom DoH servers list
+    function renderCustomDoHList() {
+        customDohList.innerHTML = '';
+        const customServers = dnsServers.filter(server => server.custom);
+
+        customServers.forEach(server => {
             const li = document.createElement("li");
             li.className = 'px-2 py-1 mb-1 bg-gray-200 rounded flex justify-between items-center border-b border-gray-300 dark:bg-gray-700 dark:border-gray-600';
 
@@ -909,30 +907,24 @@ document.addEventListener('DOMContentLoaded', function () {
             removeBtn.className = 'bg-red-500 text-white rounded px-2 py-1 ml-2 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-800';
             removeBtn.textContent = 'Delete';
             removeBtn.onclick = function () {
-                dnsServers.splice(index, 1);
-                renderDoHList();
+                const serverIndex = dnsServers.findIndex(s => s.url === server.url);
+                if (serverIndex > -1) {
+                    dnsServers.splice(serverIndex, 1);
+                }
+                renderCustomDoHList();
             };
 
             li.appendChild(removeBtn);
-            dohList.appendChild(li);
+            customDohList.appendChild(li);
         });
     }
 
-    dohBtn.onclick = function () {
-        dohModal.style.display = "block";
-        renderDoHList();
-    };
-
-    closeDohBtn.onclick = function () {
-        dohModal.style.display = "none";
-    };
-
     // Add new DoH server with automatic capability check
     addDoHBtn.onclick = function () {
-        const serverDetails = newDoHInput.value.split(', '); // Expected format: "Name, URL"
-        if (serverDetails.length >= 2) {
-            const [name, url] = serverDetails;
+        const name = newDoHNameInput.value.trim();
+        const url = newDoHUrlInput.value.trim();
 
+        if (name && url) {
             // Check if server already exists by URL or name
             const isDuplicate = dnsServers.some(server => server.url === url || server.name === name);
             if (!isDuplicate) {
@@ -942,15 +934,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 alert("A server with the same name or URL already exists. Please enter a unique name and URL.");
             }
         } else {
-            alert("Please enter DoH server details in the correct format: Name, URL");
+            alert("Please enter both a name and a URL for the DoH server.");
         }
-        newDoHInput.value = ''; // Clear the input field
-    };
-
-    window.onclick = function (event) {
-        if (event.target === dohModal) {
-            dohModal.style.display = "none";
-        }
+        newDoHNameInput.value = '';
+        newDoHUrlInput.value = '';
     };
 
     // Function to check server capabilities for CORS and method support
@@ -966,18 +953,31 @@ document.addEventListener('DOMContentLoaded', function () {
         })();
 
         const wireGetUrl = (() => {
-            const u = new URL(url);
-            u.searchParams.set('dns', encodeDnsQueryBase64Url(dnsQuery));
-            return u;
+            try {
+                const u = new URL(url);
+                u.searchParams.set('dns', encodeDnsQueryBase64Url(dnsQuery));
+                return u;
+            } catch (e) {
+                return null;
+            }
         })();
 
         const jsonGetUrl = (() => {
-            const u = new URL(url);
-            u.searchParams.set('name', testHostname);
-            u.searchParams.set('type', 'A');
-            u.searchParams.set('nocache', Date.now());
-            return u;
+            try {
+                const u = new URL(url);
+                u.searchParams.set('name', testHostname);
+                u.searchParams.set('type', 'A');
+                u.searchParams.set('nocache', Date.now());
+                return u;
+            } catch (e) {
+                return null;
+            }
         })();
+
+        if (!wireGetUrl || !jsonGetUrl) {
+            alert('Invalid URL provided.');
+            return;
+        }
 
         const withTimeout = async (input, options = {}) => {
             const controller = new AbortController();
@@ -1042,8 +1042,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (chosenType) {
-            dnsServers.push({name, url, type: chosenType, allowCors, ips: []});
-            renderDoHList();
+            dnsServers.push({name, url, type: chosenType, allowCors, ips: [], custom: true});
+            renderCustomDoHList();
             alert(`Server added. GET: ${getCors.success || getNoCors.success} (CORS: ${getCors.cors}), POST: ${postCors.success} (CORS: ${postCors.cors}). Using ${chosenType.toUpperCase()} with${allowCors ? '' : 'out'} CORS.`);
         } else {
             alert('Failed to add server. Neither GET nor POST methods succeeded. Check console for details.');
